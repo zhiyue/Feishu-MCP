@@ -11,6 +11,9 @@ import {
   ExportDocTypeSchema,
   ExportFileExtensionSchema,
   DocumentIdSchema,
+  SpreadsheetTokenSchema,
+  SpreadsheetTypeSchema,
+  SpreadsheetExportFormatSchema,
 } from '../../types/feishuSchema.js';
 
 /**
@@ -306,6 +309,61 @@ export function registerFeishuFolderTools(server: McpServer, feishuService: Feis
         const errorMessage = formatErrorMessage(error);
         return {
           content: [{ type: 'text', text: `导出文档失败: ${errorMessage}` }],
+        };
+      }
+    },
+  );
+
+  // 添加电子表格下载工具
+  server.tool(
+    'download_feishu_spreadsheet',
+    'Downloads a Feishu spreadsheet (sheet or bitable) as xlsx or csv file. This is a simplified tool specifically for spreadsheets - just provide the token and optionally specify the type and format. ' +
+    'Default exports to xlsx format. The spreadsheet token can be obtained from get_feishu_folder_files or search_feishu_documents. ' +
+    'Returns the file content as Base64 encoded string.',
+    {
+      spreadsheetToken: SpreadsheetTokenSchema,
+      spreadsheetType: SpreadsheetTypeSchema,
+      exportFormat: SpreadsheetExportFormatSchema,
+    },
+    async ({ spreadsheetToken, spreadsheetType = 'sheet', exportFormat = 'xlsx' }) => {
+      try {
+        if (!feishuService) {
+          return {
+            content: [{ type: 'text', text: '飞书服务未初始化，请检查配置' }],
+          };
+        }
+
+        Logger.info(`开始下载电子表格，Token: ${spreadsheetToken}, 类型: ${spreadsheetType}, 格式: ${exportFormat}`);
+
+        const fileBuffer = await feishuService.exportDocument(
+          spreadsheetToken,
+          exportFormat as 'xlsx' | 'csv',
+          spreadsheetType as 'sheet' | 'bitable'
+        );
+
+        const base64Content = fileBuffer.toString('base64');
+
+        Logger.info(`电子表格下载成功，大小: ${fileBuffer.length} 字节`);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                spreadsheetType: spreadsheetType,
+                exportFormat: exportFormat,
+                size: fileBuffer.length,
+                content_base64: base64Content
+              }, null, 2)
+            }
+          ],
+        };
+      } catch (error) {
+        Logger.error(`下载电子表格失败:`, error);
+        const errorMessage = formatErrorMessage(error);
+        return {
+          content: [{ type: 'text', text: `下载电子表格失败: ${errorMessage}` }],
         };
       }
     },

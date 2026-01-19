@@ -435,3 +435,24 @@ export const ExportFileTokenSchema = z.string().describe(
 export const ExportTicketSchema = z.string().describe(
   'Export task ticket (required). The ticket returned when creating an export task, used to query the task status.'
 );
+
+// 电子表格Token参数定义
+export const SpreadsheetTokenSchema = z.string().describe(
+  'Spreadsheet token (required). The unique identifier for a spreadsheet or bitable in Feishu. ' +
+  'Can be obtained from get_feishu_folder_files or search_feishu_documents. ' +
+  'Format is an alphanumeric string like "Vl0bbjpWVo8mNBdVZTlcF5EOnug".'
+);
+
+// 电子表格类型参数定义
+export const SpreadsheetTypeSchema = z.enum(['sheet', 'bitable']).optional().default('sheet').describe(
+  'Spreadsheet type (optional, default: "sheet"). The type of spreadsheet:\n' +
+  '- sheet: Regular spreadsheet (电子表格)\n' +
+  '- bitable: Multidimensional table (多维表格)'
+);
+
+// 电子表格导出格式参数定义
+export const SpreadsheetExportFormatSchema = z.enum(['xlsx', 'csv']).optional().default('xlsx').describe(
+  'Export format (optional, default: "xlsx"). The format to export the spreadsheet to:\n' +
+  '- xlsx: Excel spreadsheet format\n' +
+  '- csv: CSV text format'
+);
