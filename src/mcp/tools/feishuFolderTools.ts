@@ -7,6 +7,10 @@ import {
   FolderTokenOptionalSchema,
   FolderNameSchema,
   WikiSpaceNodeContextSchema,
+  FileTokenSchema,
+  ExportDocTypeSchema,
+  ExportFileExtensionSchema,
+  DocumentIdSchema,
 } from '../../types/feishuSchema.js';
 
 /**
@@ -181,6 +185,127 @@ export function registerFeishuFolderTools(server: McpServer, feishuService: Feis
         const errorMessage = formatErrorMessage(error);
         return {
           content: [{ type: 'text', text: `创建飞书文件夹失败: ${errorMessage}` }],
+        };
+      }
+    },
+  );
+
+  // 添加下载文件工具
+  server.tool(
+    'download_feishu_file',
+    'Downloads a file from Feishu Drive. Use this to download uploaded files (images, PDFs, archives, etc.) from Feishu Drive. The file_token can be obtained from get_feishu_folder_files tool (files[].token field). Returns the file content as Base64 encoded string. Note: This tool is for downloading uploaded files, NOT for exporting Feishu native documents (docx, sheet, bitable) - use export_feishu_document for that.',
+    {
+      fileToken: FileTokenSchema,
+    },
+    async ({ fileToken }) => {
+      try {
+        if (!feishuService) {
+          return {
+            content: [{ type: 'text', text: '飞书服务未初始化，请检查配置' }],
+          };
+        }
+
+        Logger.info(`开始下载文件，文件Token: ${fileToken}`);
+        const fileBuffer = await feishuService.downloadFile(fileToken);
+        const base64Content = fileBuffer.toString('base64');
+
+        Logger.info(`文件下载成功，大小: ${fileBuffer.length} 字节`);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                size: fileBuffer.length,
+                content_base64: base64Content
+              }, null, 2)
+            }
+          ],
+        };
+      } catch (error) {
+        Logger.error(`下载文件失败:`, error);
+        const errorMessage = formatErrorMessage(error);
+        return {
+          content: [{ type: 'text', text: `下载文件失败: ${errorMessage}` }],
+        };
+      }
+    },
+  );
+
+  // 添加导出文档工具
+  server.tool(
+    'export_feishu_document',
+    'Exports a Feishu native document to a downloadable format. Use this to export online documents, spreadsheets, multidimensional tables, or mind maps. Supported formats:\n' +
+    '- docx/doc → docx, pdf\n' +
+    '- sheet → xlsx, csv\n' +
+    '- bitable → xlsx, csv\n' +
+    '- mindnote → png, pdf\n\n' +
+    'The documentToken is the document ID (can be obtained from get_feishu_folder_files or search_feishu_documents). Returns the exported file content as Base64 encoded string. Note: Export may take a few seconds for large documents.',
+    {
+      documentToken: DocumentIdSchema,
+      docType: ExportDocTypeSchema,
+      fileExtension: ExportFileExtensionSchema,
+    },
+    async ({ documentToken, docType, fileExtension }) => {
+      try {
+        if (!feishuService) {
+          return {
+            content: [{ type: 'text', text: '飞书服务未初始化，请检查配置' }],
+          };
+        }
+
+        // 验证导出格式与文档类型的兼容性
+        const validCombinations: Record<string, string[]> = {
+          'docx': ['docx', 'pdf'],
+          'doc': ['docx', 'pdf'],
+          'sheet': ['xlsx', 'csv'],
+          'bitable': ['xlsx', 'csv'],
+          'mindnote': ['png', 'pdf'],
+        };
+
+        const validFormats = validCombinations[docType];
+        if (!validFormats || !validFormats.includes(fileExtension)) {
+          return {
+            content: [{
+              type: 'text',
+              text: `错误：文档类型 "${docType}" 不支持导出为 "${fileExtension}" 格式。\n` +
+                    `支持的格式: ${validFormats ? validFormats.join(', ') : '未知文档类型'}`
+            }],
+          };
+        }
+
+        Logger.info(`开始导出文档，Token: ${documentToken}, 类型: ${docType}, 格式: ${fileExtension}`);
+
+        const fileBuffer = await feishuService.exportDocument(
+          documentToken,
+          fileExtension as 'docx' | 'pdf' | 'xlsx' | 'csv' | 'png',
+          docType as 'docx' | 'doc' | 'sheet' | 'bitable' | 'mindnote'
+        );
+
+        const base64Content = fileBuffer.toString('base64');
+
+        Logger.info(`文档导出成功，大小: ${fileBuffer.length} 字节`);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                docType: docType,
+                fileExtension: fileExtension,
+                size: fileBuffer.length,
+                content_base64: base64Content
+              }, null, 2)
+            }
+          ],
+        };
+      } catch (error) {
+        Logger.error(`导出文档失败:`, error);
+        const errorMessage = formatErrorMessage(error);
+        return {
+          content: [{ type: 'text', text: `导出文档失败: ${errorMessage}` }],
         };
       }
     },

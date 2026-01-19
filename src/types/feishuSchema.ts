@@ -288,6 +288,13 @@ export const FolderNameSchema = z.string().describe(
   'Folder name (required). The name for the new folder to be created.'
 );
 
+// 文件Token参数定义
+export const FileTokenSchema = z.string().describe(
+  'File token (required). The unique identifier for a file in Feishu Drive. ' +
+  'Can be obtained from the get_feishu_folder_files tool (files[].token field). ' +
+  'Format is an alphanumeric string like "Vl0bbjpWVo8mNBdVZTlcF5EOnug".'
+);
+
 // 知识空间ID参数定义
 export const SpaceIdSchema = z.string().describe(
   'Space ID (optional, required for wiki space mode). The unique identifier for a wiki space in Feishu. ' +
@@ -397,3 +404,34 @@ export const WhiteboardFillArraySchema = z.array(WhiteboardContentSchema).descri
 
 // 文档标题参数定义
 export const DocumentTitleSchema = z.string().describe('Document title (required). This will be displayed in the Feishu document list and document header.');
+
+// 导出文档类型参数定义
+export const ExportDocTypeSchema = z.enum(['docx', 'doc', 'sheet', 'bitable', 'mindnote']).describe(
+  'Source document type (required). The type of Feishu document to export:\n' +
+  '- docx: New version document (新版文档)\n' +
+  '- doc: Old version document (旧版文档)\n' +
+  '- sheet: Spreadsheet (电子表格)\n' +
+  '- bitable: Multidimensional table (多维表格)\n' +
+  '- mindnote: Mind map (思维笔记)'
+);
+
+// 导出文件格式参数定义
+export const ExportFileExtensionSchema = z.enum(['docx', 'pdf', 'xlsx', 'csv', 'png']).describe(
+  'Export file format (required). The format to export the document to:\n' +
+  '- docx: Word document (for docx/doc source)\n' +
+  '- pdf: PDF document (for docx/doc/mindnote source)\n' +
+  '- xlsx: Excel spreadsheet (for sheet/bitable source)\n' +
+  '- csv: CSV file (for sheet/bitable source)\n' +
+  '- png: PNG image (for mindnote source)'
+);
+
+// 导出文件Token参数定义
+export const ExportFileTokenSchema = z.string().describe(
+  'Export file token (required). The token of the exported file, obtained from the export task result. ' +
+  'This token is only valid for 10 minutes after the export task completes.'
+);
+
+// 导出任务Ticket参数定义
+export const ExportTicketSchema = z.string().describe(
+  'Export task ticket (required). The ticket returned when creating an export task, used to query the task status.'
+);

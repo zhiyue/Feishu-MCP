@@ -1246,6 +1246,201 @@ export class FeishuApiService extends BaseApiService {
   }
 
   /**
+   * 下载飞书云空间文件
+   * @param fileToken 文件Token
+   * @returns 文件二进制数据
+   */
+  public async downloadFile(fileToken: string): Promise<Buffer> {
+    try {
+      Logger.info(`开始下载文件，文件Token: ${fileToken}`);
+
+      if (!fileToken) {
+        throw new Error('文件Token不能为空');
+      }
+
+      const endpoint = `/drive/v1/files/${fileToken}/download`;
+
+      // 使用通用的request方法获取二进制响应
+      const response = await this.request<ArrayBuffer>(endpoint, 'GET', {}, true, {}, 'arraybuffer');
+
+      const fileBuffer = Buffer.from(response);
+      Logger.info(`文件下载成功，大小: ${fileBuffer.length} 字节`);
+
+      return fileBuffer;
+    } catch (error) {
+      this.handleApiError(error, '下载文件失败');
+      return Buffer.from([]); // 永远不会执行到这里
+    }
+  }
+
+  /**
+   * 创建文档导出任务
+   * @param fileToken 文档Token
+   * @param fileExtension 导出文件格式 (docx, pdf, xlsx, csv, png)
+   * @param type 源文档类型 (docx, doc, sheet, bitable, mindnote)
+   * @returns 导出任务ticket
+   */
+  public async createExportTask(
+    fileToken: string,
+    fileExtension: 'docx' | 'pdf' | 'xlsx' | 'csv' | 'png',
+    type: 'docx' | 'doc' | 'sheet' | 'bitable' | 'mindnote'
+  ): Promise<string> {
+    try {
+      Logger.info(`创建导出任务，文档Token: ${fileToken}, 格式: ${fileExtension}, 类型: ${type}`);
+
+      const endpoint = '/drive/v1/export_tasks';
+      const payload = {
+        file_extension: fileExtension,
+        token: fileToken,
+        type: type
+      };
+
+      const response = await this.post(endpoint, payload);
+
+      if (!response || !response.ticket) {
+        throw new Error('创建导出任务失败：未返回ticket');
+      }
+
+      Logger.info(`导出任务创建成功，ticket: ${response.ticket}`);
+      return response.ticket;
+    } catch (error) {
+      this.handleApiError(error, '创建导出任务失败');
+      return ''; // 永远不会执行到这里
+    }
+  }
+
+  /**
+   * 查询导出任务结果
+   * @param ticket 导出任务ticket
+   * @returns 导出任务结果，包含 job_status 和 file_token（成功时）
+   */
+  public async getExportTaskResult(ticket: string): Promise<{
+    job_status: number;
+    job_error_msg?: string;
+    file_token?: string;
+    file_size?: number;
+  }> {
+    try {
+      Logger.debug(`查询导出任务状态，ticket: ${ticket}`);
+
+      const endpoint = `/drive/v1/export_tasks/${ticket}`;
+      const response = await this.get(endpoint);
+
+      if (!response || !response.result) {
+        throw new Error('查询导出任务失败：响应格式异常');
+      }
+
+      const result = response.result;
+      Logger.debug(`导出任务状态: job_status=${result.job_status}, file_token=${result.file_token || 'N/A'}`);
+
+      return {
+        job_status: result.job_status,
+        job_error_msg: result.job_error_msg,
+        file_token: result.file_token,
+        file_size: result.file_size
+      };
+    } catch (error) {
+      this.handleApiError(error, '查询导出任务失败');
+      return { job_status: -1 }; // 永远不会执行到这里
+    }
+  }
+
+  /**
+   * 下载导出的文件
+   * @param fileToken 导出文件Token（从导出任务结果获取）
+   * @returns 文件二进制数据
+   */
+  public async downloadExportFile(fileToken: string): Promise<Buffer> {
+    try {
+      Logger.info(`下载导出文件，文件Token: ${fileToken}`);
+
+      if (!fileToken) {
+        throw new Error('导出文件Token不能为空');
+      }
+
+      const endpoint = `/drive/v1/export_tasks/file/${fileToken}/download`;
+
+      // 使用通用的request方法获取二进制响应
+      const response = await this.request<ArrayBuffer>(endpoint, 'GET', {}, true, {}, 'arraybuffer');
+
+      const fileBuffer = Buffer.from(response);
+      Logger.info(`导出文件下载成功，大小: ${fileBuffer.length} 字节`);
+
+      return fileBuffer;
+    } catch (error) {
+      this.handleApiError(error, '下载导出文件失败');
+      return Buffer.from([]); // 永远不会执行到这里
+    }
+  }
+
+  /**
+   * 导出文档（高级方法，自动处理创建任务、轮询状态、下载文件）
+   * @param fileToken 文档Token
+   * @param fileExtension 导出文件格式 (docx, pdf, xlsx, csv, png)
+   * @param type 源文档类型 (docx, doc, sheet, bitable, mindnote)
+   * @param options 可选配置
+   * @returns 导出的文件内容（Buffer）
+   */
+  public async exportDocument(
+    fileToken: string,
+    fileExtension: 'docx' | 'pdf' | 'xlsx' | 'csv' | 'png',
+    type: 'docx' | 'doc' | 'sheet' | 'bitable' | 'mindnote',
+    options?: {
+      pollInterval?: number; // 轮询间隔，默认500ms
+      timeout?: number; // 超时时间，默认60000ms
+    }
+  ): Promise<Buffer> {
+    const pollInterval = options?.pollInterval || 500;
+    const timeout = options?.timeout || 60000;
+    const startTime = Date.now();
+
+    try {
+      Logger.info(`开始导出文档，Token: ${fileToken}, 格式: ${fileExtension}, 类型: ${type}`);
+
+      // 1. 创建导出任务
+      const ticket = await this.createExportTask(fileToken, fileExtension, type);
+
+      // 2. 轮询任务状态
+      let exportFileToken: string | undefined;
+      while (true) {
+        // 检查超时
+        if (Date.now() - startTime > timeout) {
+          throw new Error(`导出任务超时（${timeout}ms），请稍后重试`);
+        }
+
+        const result = await this.getExportTaskResult(ticket);
+
+        // job_status: 0=成功, 1=初始化, 2=处理中, 其他=失败
+        if (result.job_status === 0) {
+          exportFileToken = result.file_token;
+          Logger.info(`导出任务完成，文件Token: ${exportFileToken}, 文件大小: ${result.file_size || 'N/A'}`);
+          break;
+        } else if (result.job_status === 1 || result.job_status === 2) {
+          // 仍在处理中，等待后重试
+          Logger.debug(`导出任务处理中，状态: ${result.job_status}，等待 ${pollInterval}ms 后重试`);
+          await new Promise(resolve => setTimeout(resolve, pollInterval));
+        } else {
+          // 导出失败
+          throw new Error(`导出任务失败: ${result.job_error_msg || '未知错误'} (状态码: ${result.job_status})`);
+        }
+      }
+
+      if (!exportFileToken) {
+        throw new Error('导出任务完成但未返回文件Token');
+      }
+
+      // 3. 下载导出的文件
+      const fileBuffer = await this.downloadExportFile(exportFileToken);
+
+      Logger.info(`文档导出完成，总耗时: ${Date.now() - startTime}ms`);
+      return fileBuffer;
+    } catch (error) {
+      this.handleApiError(error, '导出文档失败');
+      return Buffer.from([]); // 永远不会执行到这里
+    }
+  }
+
+  /**
    * 获取飞书根文件夹信息
    * 获取用户的根文件夹的元数据信息，包括token、id和用户id
    * @returns 根文件夹信息
